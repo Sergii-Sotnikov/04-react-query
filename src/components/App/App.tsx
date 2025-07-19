@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import css from "./App.module.css";
 import { getMovie } from "../../services/movieService";
 import SearchBar from "../SearchBar/SearchBar";
@@ -8,43 +9,53 @@ import Loader from "../Loader/Loader";
 import ErrorMessage from "../ErrorMessage/ErrorMessage";
 import MovieGrid from "../MovieGrid/MovieGrid";
 import MovieModal from "../MovieModal/MovieModal";
+import Paginate from "../Paginate/Paginate";
 
 function App() {
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<boolean>(false);
-  const [movies, setMovies] = useState<Movie[]>([]);
+  const [query, setQuery] = useState<string>("");
   const [selectMovie, setSelectMovie] = useState<Movie | null>(null);
+  const [page, setPage] = useState<number>(1);
 
-  const handleSubmit = async (query: string) => {
-    try {
-      setIsLoading(true);
-      setError(false);
-      setMovies([]);
-      const fetchedMovies = await getMovie(query);
-      if (!fetchedMovies.length) {
-        toast.error("No movies found for your request.");
-        return;
-      }
-      setMovies(fetchedMovies);
-    } catch (error) {
-      console.log(error);
-      setError(true);
-    } finally {
-      setIsLoading(false);
-    }
+  const { data, isLoading, isError, isSuccess } = useQuery({
+    queryKey: ["movie", query, page],
+    queryFn: () => getMovie(query, page),
+    enabled: query !== "",
+    placeholderData: keepPreviousData,
+  });
+
+  const handleSubmit = (query: string) => {
+    setQuery(query);
+    setPage(1);
   };
 
-  const handleSelect = (movie: Movie | null) =>{
-    setSelectMovie(movie)
-  }
+  useEffect(() => {
+    if (!data) return;
+
+    if (data.results.length === 0) {
+      toast.error("No movies found for your request.");
+    }
+  }, [data]);
+
+  const handleSelect = (movie: Movie | null) => {
+    setSelectMovie(movie);
+  };
+
+  const totalPages = data?.total_pages ?? 0;
 
   return (
     <div className={css.app}>
       <SearchBar onSubmit={handleSubmit} />
       {isLoading && <Loader />}
-      {error && <ErrorMessage />}
-      {movies.length > 0 && <MovieGrid movies={movies} onSelect={handleSelect} />}
-      {selectMovie && <MovieModal movie={selectMovie} onClose={()=>setSelectMovie(null)}/>}
+      {isError && <ErrorMessage />}
+      {isSuccess && data.results.length > 0 && (
+        <Paginate total={totalPages} onChange={setPage} page={page} />
+      )}
+      {data && data.results.length > 0 && (
+        <MovieGrid movies={data.results} onSelect={handleSelect} />
+      )}
+      {selectMovie && (
+        <MovieModal movie={selectMovie} onClose={() => setSelectMovie(null)} />
+      )}
       <Toaster />
     </div>
   );
